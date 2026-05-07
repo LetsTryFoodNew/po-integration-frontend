@@ -12,6 +12,8 @@ import {
   GitMerge,
   AlertTriangle,
   ReceiptText,
+  ClipboardList,
+  PackageCheck,
 } from "lucide-react";
 
 const coreNavItems = [
@@ -29,6 +31,11 @@ const ediNavItems = [
   { to: "/unmapped-skus", icon: AlertTriangle, label: "Unmapped SKUs" },
   { to: "/sap-orders", icon: ReceiptText, label: "SAP Sales Orders" },
   { to: "/integration", icon: Settings, label: "Integration Setup" },
+];
+
+const zeptoNavItems = [
+  { to: "/zepto/pos", icon: ClipboardList, label: "PO Events" },
+  { to: "/zepto/asn", icon: PackageCheck,  label: "ASN Manager" },
 ];
 
 
@@ -76,6 +83,28 @@ export default function Sidebar() {
               to={to}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-sm transition-all ${
                 active ? "bg-indigo-600 text-white font-semibold" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              }`}
+            >
+              <Icon size={18} />
+              {label}
+            </Link>
+          );
+        })}
+
+        <p className="text-xs text-gray-500 uppercase tracking-wider px-3 mb-2 mt-4">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-500"></span>
+            Zepto
+          </span>
+        </p>
+        {zeptoNavItems.map(({ to, icon: Icon, label }) => {
+          const active = pathname === to || pathname.startsWith(to + "/");
+          return (
+            <Link
+              key={to}
+              to={to}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-sm transition-all ${
+                active ? "bg-violet-600 text-white font-semibold" : "text-gray-400 hover:bg-gray-800 hover:text-white"
               }`}
             >
               <Icon size={18} />

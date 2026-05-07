@@ -105,3 +105,126 @@ export interface DashboardStats {
   total_sap_orders: number;
   unmapped_skus: number;
 }
+
+// ── Zepto Silk Route Types ────────────────────────────────────────────────────
+
+export type ZeptoPOEventType = "CreatePO" | "UpdatePO" | "CancelPO";
+
+export type ZeptoPOStatus = "RELEASED" | "EXPIRED" | "CANCELLED" | "CLOSED" | "OPEN";
+
+export interface ZeptoPOLineItem {
+  skuCode: string;
+  materialCode?: string;
+  matetrialCode?: string;  // Zepto API has this typo in some responses
+  productName: string;
+  subCategory?: string;
+  brandName?: string;
+  quantity: number;
+  ean?: string;
+  mrp: number;
+  costPrice: number;
+  hsnCode?: string;
+  hsnText?: string;
+  margin?: number;
+  dispatchMargin?: number;
+  outboundMargin?: number;
+  holdingMargin?: number;
+  bfdMargin?: number;
+  igstPercentage?: number;
+  cgstPercentage?: number;
+  sgstPercentage?: number;
+  cessPercentage?: number;
+  absoluteCess?: number;
+  packSize?: number;
+  totalAmount?: number;
+  taxExclusiveCost?: number;
+  cgstValue?: number;
+  sgstValue?: number;
+  igstValue?: number;
+  cessValue?: number;
+  absoluteCessValue?: number;
+  taxLogic?: string;
+}
+
+export interface ZeptoPO {
+  eventId: string;
+  eventType: ZeptoPOEventType;
+  timestamp: string;
+  code: string;           // PO number e.g. "P364929"
+  type?: string;
+  status: ZeptoPOStatus;
+  vendorCode: string;
+  vendorName?: string;
+  vendorType?: string;
+  entityCode?: string;
+  entityName?: string;
+  orderDate?: string;
+  deliveryDate?: string;
+  expiryDate?: string;
+  terms?: string;
+  pdfFileName?: string;
+  expiringPoPdfLink?: string;
+  expiringUrlForPoPDF?: string;
+  totalQty?: number;
+  toStoreCode?: string;
+  toStoreName?: string;
+  fromStoreCode?: string;
+  fromStoreName?: string;
+  isInterstate?: boolean;
+  poLineItems?: ZeptoPOLineItem[];
+  address?: {
+    storeAddress?: string;
+    vendorAddress?: string;
+    storeShippingAddress?: string;
+    storeBillingAddress?: string;
+    vendorPinCode?: string;
+  };
+  financialDetails?: {
+    vendorGSTIN?: string;
+    entityGSTIN?: string;
+    vendorPAN?: string;
+    entityPAN?: string;
+  };
+}
+
+export interface ZeptoPOListData {
+  purchaseOrders: ZeptoPO[];
+  hasNext: boolean;
+  pageNumber: number;
+  pageSize: number;
+}
+
+export interface ZeptoASNItem {
+  skuCode?: string;
+  materialCode?: string;
+  productName?: string;
+  invoicedQuantity?: number;
+  freeQuantity?: number;
+  mrp?: number;
+  basePrice?: number;
+  batchDetails?: { batchNumber?: string; expiryDate?: string };
+}
+
+export interface ZeptoASN {
+  asnNumber: string;
+  invoiceNumber?: string;
+  status: string;
+  asnTotalAmount?: number;
+  poNumber?: string;
+  vendor?: string;
+  vendorName?: string;
+  locationCode?: string;
+  locationName?: string;
+  poQuantity?: number;
+  asnQuantity?: number;
+  totalAmount?: number;
+  createdAt?: string;
+  itemDetails?: ZeptoASNItem[];
+}
+
+export interface ZeptoASNListData {
+  ASNs: ZeptoASN[];
+  hasNext: boolean;
+  pageNumber: number;
+  pageSize: number;
+}

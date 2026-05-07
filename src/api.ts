@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const api = axios.create({ baseURL: "http://localhost:8000/api" });
+export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8000/api";
+
+const api = axios.create({ baseURL: API_BASE });
 export default api;
 
 // Dashboard
@@ -51,3 +53,32 @@ export const createSAPOrderFromPO = (poId: number) =>
 export const getUnmappedSKUs = (params?: any) => api.get("/unmapped-skus", { params });
 export const resolveUnmappedSKU = (alertId: number, data: { product_id: number; resolution_notes?: string }) =>
   api.post(`/unmapped-skus/${alertId}/resolve`, data);
+
+// ── Zepto Silk Route ───────────────────────────────────────────────────────────
+export const getZeptoHealth = () => api.get("/zepto/health");
+export const getZeptoConnectionInfo = () => api.get("/zepto/connection-info");
+
+export const getZeptoPOEvents = (params?: {
+  days?: number;
+  vendor_codes?: string;
+  po_codes?: string;
+  include_all_po_events?: boolean;
+  include_line_item_details?: boolean;
+  page_size?: number;
+  page_number?: number;
+}) => api.get("/zepto/po-events", { params });
+
+export const getZeptoASNs = (po_code: string, params?: { page_size?: number; page_number?: number }) =>
+  api.get("/zepto/asn", { params: { po_code, ...params } });
+
+export const createZeptoASN = (payload: any) => api.post("/zepto/asn", payload);
+
+export const cancelZeptoASN = (asn_number: string) => api.delete(`/zepto/asn/${asn_number}`);
+
+// Returns { po_code, allocations: { skuCode: allocatedQty } } — our own DB tracking
+// because Zepto's list_asns API never returns per-SKU breakdowns.
+export const getZeptoPOSKUAllocations = (po_code: string) =>
+  api.get(`/zepto/po/${encodeURIComponent(po_code)}/sku-allocations`);
+
+export const requestZeptoPOAmendment = (po_number: string, payload: any) =>
+  api.post(`/zepto/po/${po_number}/amendment`, payload);

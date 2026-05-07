@@ -12,6 +12,8 @@ import IntegrationSetup from "./pages/IntegrationSetup";
 import ProductMappings from "./pages/ProductMappings";
 import SAPOrders from "./pages/SAPOrders";
 import UnmappedSKUs from "./pages/UnmappedSKUs";
+import ZeptoPOs from "./pages/ZeptoPOs";
+import ZeptoASN from "./pages/ZeptoASN";
 
 function App() {
   return (
@@ -32,6 +34,8 @@ function App() {
             <Route path="/product-mappings" element={<ProductMappings />} />
             <Route path="/sap-orders" element={<SAPOrders />} />
             <Route path="/unmapped-skus" element={<UnmappedSKUs />} />
+            <Route path="/zepto/pos" element={<ZeptoPOs />} />
+            <Route path="/zepto/asn" element={<ZeptoASN />} />
           </Routes>
         </main>
       </div>
