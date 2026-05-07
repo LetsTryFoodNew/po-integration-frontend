@@ -38,6 +38,11 @@ const zeptoNavItems = [
   { to: "/zepto/asn", icon: PackageCheck,  label: "ASN Manager" },
 ];
 
+const blinkitNavItems = [
+  { to: "/blinkit/pos", icon: ClipboardList, label: "PO Events" },
+  { to: "/blinkit/asn", icon: PackageCheck,  label: "ASN Manager" },
+];
+
 
 export default function Sidebar() {
   const { pathname } = useLocation();
@@ -105,6 +110,28 @@ export default function Sidebar() {
               to={to}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-sm transition-all ${
                 active ? "bg-violet-600 text-white font-semibold" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              }`}
+            >
+              <Icon size={18} />
+              {label}
+            </Link>
+          );
+        })}
+
+        <p className="text-xs text-gray-500 uppercase tracking-wider px-3 mb-2 mt-4">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            Blinkit
+          </span>
+        </p>
+        {blinkitNavItems.map(({ to, icon: Icon, label }) => {
+          const active = pathname === to || pathname.startsWith(to + "/");
+          return (
+            <Link
+              key={to}
+              to={to}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-sm transition-all ${
+                active ? "bg-amber-600 text-white font-semibold" : "text-gray-400 hover:bg-gray-800 hover:text-white"
               }`}
             >
               <Icon size={18} />

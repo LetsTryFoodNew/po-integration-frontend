@@ -228,3 +228,88 @@ export interface ZeptoASNListData {
   pageNumber: number;
   pageSize: number;
 }
+
+// ── Blinkit Vendor API Types ──────────────────────────────────────────────────
+
+export type BlinkitPOStatus = "OPEN" | "CLOSED" | "CANCELLED" | "DRAFT" | "EXPIRED";
+
+export interface BlinkitPOItem {
+  productId: string;
+  skuCode?: string;
+  productName: string;
+  category?: string;
+  subCategory?: string;
+  brandName?: string;
+  requestedQty: number;
+  rate: number;
+  mrp: number;
+  hsnCode?: string;
+  gstRate?: number;
+  cgstRate?: number;
+  sgstRate?: number;
+  igstRate?: number;
+  totalAmount?: number;
+  batchRequired?: boolean;
+  shelfLife?: number;
+  ean?: string;
+  packSize?: string;
+}
+
+export interface BlinkitPO {
+  purchaseOrderId: string;
+  poCode?: string;
+  status: BlinkitPOStatus;
+  type?: string;
+  createdAt: string;
+  deliveryDate?: string;
+  updatedAt?: string;
+  vendorId: number;
+  warehouseCode?: string;
+  warehouseName?: string;
+  warehouseAddress?: string;
+  cityName?: string;
+  totalQty?: number;
+  totalAmount?: number;
+  items?: BlinkitPOItem[];
+}
+
+export interface BlinkitPOListData {
+  purchaseOrders: BlinkitPO[];
+  hasNext: boolean;
+  totalCount?: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface BlinkitASNItem {
+  productId?: string;
+  skuCode?: string;
+  productName?: string;
+  invoicedQty?: number;
+  mrp?: number;
+  rate?: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  totalAmount?: number;
+}
+
+export interface BlinkitASN {
+  asnId: string;
+  asnNumber?: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  status: string;
+  purchaseOrderId?: string;
+  vendorId?: number;
+  totalQty?: number;
+  totalAmount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  items?: BlinkitASNItem[];
+}
+
+export interface BlinkitASNListData {
+  asns: BlinkitASN[];
+  hasNext: boolean;
+  totalCount?: number;
+}

@@ -82,3 +82,30 @@ export const getZeptoPOSKUAllocations = (po_code: string) =>
 
 export const requestZeptoPOAmendment = (po_number: string, payload: any) =>
   api.post(`/zepto/po/${po_number}/amendment`, payload);
+
+// ── Blinkit Vendor API ────────────────────────────────────────────────────────
+export const getBlinkitHealth = () => api.get("/blinkit/health");
+export const getBlinkitConnectionInfo = () => api.get("/blinkit/connection-info");
+
+export const getBlinkitPOs = (params?: {
+  status?: string;
+  days?: number;
+  page?: number;
+  page_size?: number;
+}) => api.get("/blinkit/pos", { params });
+
+export const getBlinkitPO = (po_number: string) =>
+  api.get(`/blinkit/pos/${encodeURIComponent(po_number)}`);
+
+export const createBlinkitASN = (payload: any) =>
+  api.post("/blinkit/asn", payload);
+
+export const getBlinkitASNs = (
+  po_number: string,
+  params?: { page?: number; page_size?: number },
+) => api.get("/blinkit/asn", { params: { po_number, ...params } });
+
+export const cancelBlinkitASN = (asn_id: string, reason?: string) =>
+  api.delete(`/blinkit/asn/${encodeURIComponent(asn_id)}`, {
+    params: reason ? { reason } : undefined,
+  });
