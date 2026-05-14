@@ -236,6 +236,7 @@ export type BlinkitPOStatus = "OPEN" | "CLOSED" | "CANCELLED" | "DRAFT" | "EXPIR
 export interface BlinkitPOItem {
   productId: string;
   skuCode?: string;
+  upc?: string;
   productName: string;
   category?: string;
   subCategory?: string;
@@ -260,7 +261,9 @@ export interface BlinkitPO {
   poCode?: string;
   status: BlinkitPOStatus;
   type?: string;
+  eventType?: string;
   createdAt: string;
+  receivedAt?: string;
   deliveryDate?: string;
   updatedAt?: string;
   vendorId: number;
@@ -268,6 +271,7 @@ export interface BlinkitPO {
   warehouseName?: string;
   warehouseAddress?: string;
   cityName?: string;
+  buyerGstin?: string;
   totalQty?: number;
   totalAmount?: number;
   items?: BlinkitPOItem[];
@@ -312,4 +316,40 @@ export interface BlinkitASNListData {
   asns: BlinkitASN[];
   hasNext: boolean;
   totalCount?: number;
+}
+
+// ── Email PO Layer ────────────────────────────────────────────────────────────
+
+export type EmailParseStatus = "PENDING" | "PARSED" | "FAILED";
+
+export interface EmailPOItem {
+  product_name: string;
+  sku: string | null;
+  quantity: number;
+  unit_price: number;
+}
+
+export interface EmailPOParsedData {
+  po_number?: string;
+  partner_code?: string;
+  partner_name?: string;
+  order_date?: string;
+  delivery_date?: string;
+  items?: EmailPOItem[];
+  notes?: string;
+  confidence?: "HIGH" | "MEDIUM" | "LOW";
+  error?: string;
+}
+
+export interface EmailPOLog {
+  id: number;
+  sender_email: string | null;
+  subject: string | null;
+  parse_status: EmailParseStatus;
+  po_number: string | null;
+  partner_code: string | null;
+  parsed_data: EmailPOParsedData | null;
+  po_id: number | null;
+  error_message: string | null;
+  created_at: string;
 }

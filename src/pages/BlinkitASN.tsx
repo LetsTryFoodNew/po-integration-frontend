@@ -91,7 +91,7 @@ export default function BlinkitASN() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-1.5">
         <div className="flex items-start gap-2">
           <Info size={15} className="mt-0.5 flex-shrink-0" />
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <p>
               <strong>ASN endpoint (testing):</strong>{" "}
               <code className="bg-white border border-amber-200 rounded px-1 text-xs">
@@ -101,12 +101,13 @@ export default function BlinkitASN() {
             <p>
               To <strong>create</strong> an ASN → go to{" "}
               <a href="/blinkit/pos" className="underline font-medium">Blinkit PO Events</a>{" "}
-              and click <strong>ASN</strong> on an OPEN PO.
+              and click <strong>ASN</strong> on any received PO.
             </p>
-            <p>
-              <strong>Note:</strong> Blinkit does not provide a List ASNs API — track your{" "}
-              <code className="bg-white border border-amber-200 rounded px-1 text-xs">asn_id</code>{" "}
-              from each create response. The search below shows locally-tracked ASNs only.
+            <p className="text-amber-700">
+              <strong>Important:</strong> Blinkit does not provide a List ASNs API.
+              When you create an ASN, save the <code className="bg-white border border-amber-200 rounded px-1 text-xs">asn_id</code>{" "}
+              returned — it's the only way to reference or cancel that shipment later.
+              The search below looks up locally-tracked records only.
             </p>
           </div>
         </div>
@@ -153,10 +154,11 @@ export default function BlinkitASN() {
           {asns.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <PackageCheck size={40} className="mx-auto mb-3 text-gray-300" />
-              <p className="font-medium">No ASNs found for PO {searchedCode}</p>
-              <p className="text-sm mt-1">
-                Create one from the{" "}
-                <a href="/blinkit/pos" className="text-amber-600 hover:underline">Blinkit PO Events</a> page
+              <p className="font-medium">No locally-tracked ASNs for PO {searchedCode}</p>
+              <p className="text-sm mt-1 max-w-xs mx-auto">
+                Blinkit has no list API — ASNs submitted before local tracking was set up won't appear here.
+                Create a new one from the{" "}
+                <a href="/blinkit/pos" className="text-amber-600 hover:underline">Blinkit PO Events</a> page.
               </p>
             </div>
           ) : (

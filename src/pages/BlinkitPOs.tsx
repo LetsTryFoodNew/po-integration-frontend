@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import {
   getBlinkitPOs, getBlinkitPO, getBlinkitHealth, createBlinkitASN,
+  getBlinkitASNs, getBlinkitPOSKUAllocations,
 } from "../api";
 import type {
   BlinkitPO, BlinkitPOItem, BlinkitPOListData,
@@ -13,18 +14,18 @@ import type {
 import blinkitLogo from "../assets/blinkit-logo.svg";
 
 const PO_STATUS_STYLE: Record<string, string> = {
-  OPEN:      "bg-green-100 text-green-700 border-green-300",
-  DRAFT:     "bg-yellow-100 text-yellow-700 border-yellow-300",
-  CLOSED:    "bg-blue-100 text-blue-700 border-blue-300",
-  CANCELLED: "bg-red-100 text-red-700 border-red-300",
-  EXPIRED:   "bg-gray-100 text-gray-600 border-gray-300",
+  OPEN:     "bg-green-100 text-green-700 border-green-300",
+  RELEASED: "bg-green-100 text-green-700 border-green-300",
+  DRAFT:    "bg-yellow-100 text-yellow-700 border-yellow-300",
+  CLOSED:   "bg-blue-100 text-blue-700 border-blue-300",
+  CANCELLED:"bg-red-100 text-red-700 border-red-300",
+  EXPIRED:  "bg-gray-100 text-gray-600 border-gray-300",
 };
-
-const STATUS_FILTERS = ["", "OPEN", "CLOSED", "CANCELLED", "DRAFT", "EXPIRED"];
 
 interface ASNLineForm {
   productId: string;
   skuCode: string;
+  upc: string;
   productName: string;
   requestedQty: number;
   invoicedQty: number;
@@ -38,13 +39,41 @@ interface CreateASNForm {
   invoiceNumber: string;
   invoiceDate: string;
   deliveryDate: string;
+  supplierGstin: string;
+  supplierAddress1: string;
+  supplierCity: string;
+  supplierState: string;
+  supplierPostalCode: string;
+  buyerGstin: string;
+  deliveryType: string;
   lines: ASNLineForm[];
+}
+
+interface BlinkitTrackedASN {
+  asn_id: string;
+  po_number: string;
+  invoice_number?: string;
+  created_at?: string;
+  total_qty: number;
+  items: { item_id: string; sku_code: string; invoiced_qty: number }[];
+}
+
+function recalcLineQtys(
+  lines: ASNLineForm[],
+  allocations: Record<string, number>,
+): ASNLineForm[] {
+  if (Object.keys(allocations).length === 0) return lines.map(l => ({ ...l, invoicedQty: l.requestedQty }));
+  return lines.map(l => ({
+    ...l,
+    invoicedQty: Math.max(0, l.requestedQty - (allocations[l.productId] ?? 0)),
+  }));
 }
 
 function lineFromItem(item: BlinkitPOItem): ASNLineForm {
   return {
     productId:    item.productId,
     skuCode:      item.skuCode ?? "",
+    upc:          item.upc ?? "",
     productName:  item.productName,
     requestedQty: item.requestedQty,
     invoicedQty:  item.requestedQty,
@@ -59,21 +88,37 @@ export default function BlinkitPOs() {
   const [pos, setPOs]               = useState<BlinkitPO[]>([]);
   const [loading, setLoading]       = useState(false);
   const [connected, setConnected]   = useState<boolean | null>(null);
-  const [days, setDays]             = useState(30);
-  const [statusFilter, setStatus]   = useState("");
-  const [page, setPage]             = useState(1);
-  const [hasNext, setHasNext]       = useState(false);
   const [expandedRows, setExpanded] = useState<Set<string>>(new Set());
   const [loadingItems, setLoadingItems] = useState<Set<string>>(new Set());
 
   // ASN modal
   const [asnModal, setAsnModal]           = useState<BlinkitPO | null>(null);
   const [asnForm, setAsnForm]             = useState<CreateASNForm>({
-    invoiceNumber: "", invoiceDate: "", deliveryDate: "", lines: [],
+    invoiceNumber: "", invoiceDate: "", deliveryDate: "",
+    supplierGstin: "", supplierAddress1: "", supplierCity: "",
+    supplierState: "", supplierPostalCode: "", buyerGstin: "",
+    deliveryType: "SELF", lines: [],
   });
-  const [asnSubmitting, setAsnSubmitting] = useState(false);
-  const [asnResult, setAsnResult]         = useState<string | null>(null);
-  const [asnError, setAsnError]           = useState<string | null>(null);
+  const [asnSubmitting, setAsnSubmitting]         = useState(false);
+  const [asnResult, setAsnResult]                 = useState<string | null>(null);
+  const [asnError, setAsnError]                   = useState<string | null>(null);
+  const [asnExisting, setAsnExisting]             = useState<BlinkitTrackedASN[]>([]);
+  const [asnAllocations, setAsnAllocations]       = useState<Record<string, number>>({});
+  const [asnExistingLoading, setAsnExistingLoading] = useState(false);
+  const [poAllocationsMap, setPoAllocationsMap]     = useState<Record<string, Record<string, number>>>({});
+
+  const fetchAllAllocations = async (poList: BlinkitPO[]) => {
+    const results = await Promise.allSettled(
+      poList.map(po => getBlinkitPOSKUAllocations(po.purchaseOrderId))
+    );
+    const map: Record<string, Record<string, number>> = {};
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        map[poList[i].purchaseOrderId] = r.value.data?.allocations ?? {};
+      }
+    });
+    setPoAllocationsMap(map);
+  };
 
   const checkHealth = async () => {
     try {
@@ -84,20 +129,15 @@ export default function BlinkitPOs() {
     }
   };
 
-  const fetchPOs = async (p = page) => {
+  const fetchPOs = async () => {
     setLoading(true);
     try {
-      const res  = await getBlinkitPOs({
-        days,
-        status:    statusFilter || undefined,
-        page:      p,
-        page_size: 20,
-      });
-      // Support both direct array and wrapped { purchaseOrders, hasNext } shapes
+      const res  = await getBlinkitPOs();
       const body  = res.data?.data ?? res.data;
       const list  = (body?.purchaseOrders ?? body?.data?.purchaseOrders ?? body) as BlinkitPO[];
-      setPOs(Array.isArray(list) ? list : []);
-      setHasNext(body?.hasNext ?? false);
+      const poList = Array.isArray(list) ? list : [];
+      setPOs(poList);
+      fetchAllAllocations(poList);
     } catch (e: any) {
       console.error("Blinkit PO fetch error:", e);
       setPOs([]);
@@ -105,11 +145,17 @@ export default function BlinkitPOs() {
     setLoading(false);
   };
 
+  const getFillRate = (po: BlinkitPO): number => {
+    const alloc = poAllocationsMap[po.purchaseOrderId];
+    if (!alloc || !po.totalQty) return 0;
+    const allocated = Object.values(alloc).reduce((s, v) => s + v, 0);
+    return Math.min(100, Math.round((allocated / po.totalQty) * 100));
+  };
+
   useEffect(() => {
     checkHealth();
-    fetchPOs(1);
-    setPage(1);
-  }, [days, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchPOs();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleRow = async (po: BlinkitPO) => {
     const id = po.purchaseOrderId;
@@ -143,16 +189,39 @@ export default function BlinkitPOs() {
     }
   };
 
-  const openASNModal = (po: BlinkitPO) => {
+  const openASNModal = async (po: BlinkitPO) => {
     setAsnResult(null);
     setAsnError(null);
+    setAsnExisting([]);
+    setAsnAllocations({});
+    const baseLines = (po.items ?? []).map(lineFromItem);
     setAsnForm({
-      invoiceNumber: "",
-      invoiceDate:   new Date().toISOString().split("T")[0],
-      deliveryDate:  po.deliveryDate ? po.deliveryDate.split("T")[0] : "",
-      lines:         (po.items ?? []).map(lineFromItem),
+      invoiceNumber:    "",
+      invoiceDate:      new Date().toISOString().split("T")[0],
+      deliveryDate:     po.deliveryDate ? po.deliveryDate.split("T")[0] : "",
+      supplierGstin:    "",
+      supplierAddress1: "",
+      supplierCity:     "",
+      supplierState:    "",
+      supplierPostalCode: "",
+      buyerGstin:       po.buyerGstin ?? "",
+      deliveryType:     "SELF",
+      lines:            baseLines,
     });
     setAsnModal(po);
+    setAsnExistingLoading(true);
+    try {
+      const [asnRes, allocRes] = await Promise.all([
+        getBlinkitASNs(po.purchaseOrderId),
+        getBlinkitPOSKUAllocations(po.purchaseOrderId),
+      ]);
+      const existing   = (asnRes.data?.data?.asns ?? []) as BlinkitTrackedASN[];
+      const allocations = (allocRes.data?.allocations ?? {}) as Record<string, number>;
+      setAsnExisting(existing);
+      setAsnAllocations(allocations);
+      setAsnForm(f => ({ ...f, lines: recalcLineQtys(f.lines, allocations) }));
+    } catch { /* non-critical */ }
+    setAsnExistingLoading(false);
   };
 
   const handleASNSubmit = async (e: { preventDefault(): void }) => {
@@ -160,27 +229,81 @@ export default function BlinkitPOs() {
     if (!asnModal) return;
     setAsnSubmitting(true);
     setAsnError(null);
+    const shipLines = asnForm.lines.filter(l => l.invoicedQty > 0);
+    const totalQty       = shipLines.reduce((s, l) => s + l.invoicedQty, 0);
+    const totalBasic     = shipLines.reduce((s, l) => s + l.rate * l.invoicedQty, 0);
+    const totalLanding   = shipLines.reduce((s, l) => s + l.rate * l.invoicedQty, 0);
+
     const payload = {
-      purchaseOrderId: asnModal.purchaseOrderId,
-      vendorId:        asnModal.vendorId ?? 18309,
-      invoiceNumber:   asnForm.invoiceNumber,
-      invoiceDate:     asnForm.invoiceDate,
-      ...(asnForm.deliveryDate ? { deliveryDate: asnForm.deliveryDate } : {}),
-      items: asnForm.lines
-        .filter(l => l.invoicedQty > 0)
-        .map(l => ({
-          productId:    l.productId,
-          invoicedQty:  l.invoicedQty,
-          rate:         l.rate,
-          mrp:          l.mrp,
-          ...(l.batchNumber ? { batchNumber: l.batchNumber } : {}),
-          ...(l.expiryDate  ? { expiryDate:  l.expiryDate  } : {}),
-        })),
+      po_number:      asnModal.purchaseOrderId,
+      invoice_number: asnForm.invoiceNumber,
+      invoice_date:   asnForm.invoiceDate,
+      delivery_date:  asnForm.deliveryDate || undefined,
+      // Header-level aggregates — required by Blinkit contract
+      quantity:       String(totalQty),
+      item_count:     String(shipLines.length),
+      basic_price:    String(totalBasic.toFixed(2)),
+      landing_price:  String(totalLanding.toFixed(2)),
+      tax_distribution: [
+        { gst_type: "CGST", gst_percentage: 0, gst_total: 0 },
+        { gst_type: "SGST", gst_percentage: 0, gst_total: 0 },
+      ],
+      supplier_details: {
+        name:  "Let's Try Foods",
+        gstin: asnForm.supplierGstin,
+        supplier_address: {
+          address_line_1: asnForm.supplierAddress1,
+          city:           asnForm.supplierCity,
+          state:          asnForm.supplierState,
+          postal_code:    asnForm.supplierPostalCode,
+          country:        "India",
+        },
+      },
+      buyer_details: {
+        gstin: asnForm.buyerGstin,
+      },
+      shipment_details: {
+        delivery_type: asnForm.deliveryType,
+      },
+      items: shipLines.map(l => ({
+        item_id:            String(l.productId),
+        sku_code:           l.skuCode || undefined,
+        sku_description:    l.productName,
+        upc:                l.upc || "",
+        batch_number:       l.batchNumber || "",
+        case_config:        1,
+        quantity:           l.invoicedQty,
+        mrp:                l.mrp,
+        unit_basic_price:   l.rate,
+        unit_landing_price: String(l.rate),
+        uom:                { unit: "PC", value: 1 },
+        tax_distribution: {
+          cgst_percentage:       0,
+          sgst_percentage:       0,
+          igst_percentage:       0,
+          ugst_percentage:       0,
+          cess_percentage:       0,
+          additional_cess_value: 0,
+        },
+        ...(l.expiryDate ? { expiry_date: l.expiryDate } : {}),
+      })),
     };
     try {
       const res  = await createBlinkitASN(payload);
       const id   = res.data?.asn_id ?? res.data?.data?.asnId ?? res.data?.asnId;
       setAsnResult(id ?? "ASN Submitted");
+      // Refresh allocations so fill rate updates immediately
+      try {
+        const [asnRes, allocRes] = await Promise.all([
+          getBlinkitASNs(asnModal.purchaseOrderId),
+          getBlinkitPOSKUAllocations(asnModal.purchaseOrderId),
+        ]);
+        const newExisting    = (asnRes.data?.data?.asns ?? []) as BlinkitTrackedASN[];
+        const newAllocations = (allocRes.data?.allocations ?? {}) as Record<string, number>;
+        setAsnExisting(newExisting);
+        setAsnAllocations(newAllocations);
+        setPoAllocationsMap(prev => ({ ...prev, [asnModal.purchaseOrderId]: newAllocations }));
+      } catch { /* non-critical */ }
     } catch (err: any) {
       setAsnError(
         err.response?.data?.detail ??
@@ -224,7 +347,7 @@ export default function BlinkitPOs() {
              connected === false ? "Connection Error"  : "Checking…"}
           </div>
           <button
-            onClick={() => { checkHealth(); fetchPOs(page); }}
+            onClick={() => { checkHealth(); fetchPOs(); }}
             className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 transition"
           >
             <RefreshCcw size={14} /> Refresh
@@ -250,42 +373,6 @@ export default function BlinkitPOs() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 font-medium">Past</label>
-          <select
-            value={days}
-            onChange={e => setDays(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-          >
-            {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 font-medium">Status</label>
-          <select
-            value={statusFilter}
-            onChange={e => setStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-          >
-            {STATUS_FILTERS.map(s => <option key={s} value={s}>{s || "All"}</option>)}
-          </select>
-        </div>
-        <div className="ml-auto flex items-center gap-2 text-sm text-gray-500">
-          Page {page}
-          <button
-            disabled={page <= 1}
-            onClick={() => { const p = page - 1; setPage(p); fetchPOs(p); }}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >←</button>
-          <button
-            disabled={!hasNext}
-            onClick={() => { const p = page + 1; setPage(p); fetchPOs(p); }}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >→</button>
-        </div>
-      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
@@ -333,9 +420,11 @@ export default function BlinkitPOs() {
                 <th className="px-4 py-3 text-left">PO Number</th>
                 <th className="px-4 py-3 text-left">Warehouse</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Received At</th>
                 <th className="px-4 py-3 text-left">Delivery Date</th>
                 <th className="px-4 py-3 text-right">Total Qty</th>
                 <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-center">Fill Rate</th>
                 <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
@@ -382,6 +471,13 @@ export default function BlinkitPOs() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {(po.receivedAt ?? po.createdAt)
+                          ? new Date((po.receivedAt ?? po.createdAt)!).toLocaleString("en-IN", {
+                              day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                            })
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {po.deliveryDate
                           ? new Date(po.deliveryDate).toLocaleDateString("en-IN", {
                               day: "2-digit", month: "short", year: "numeric",
@@ -397,21 +493,45 @@ export default function BlinkitPOs() {
                           : "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {po.status === "OPEN" && (
-                          <button
-                            onClick={() => openASNModal(po)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition"
-                          >
-                            <Plus size={11} /> ASN
-                          </button>
-                        )}
+                        {(() => {
+                          const rate = getFillRate(po);
+                          const color = rate >= 100
+                            ? "bg-red-100 text-red-700 border-red-300"
+                            : rate > 0
+                              ? "bg-yellow-100 text-yellow-700 border-yellow-300"
+                              : "bg-gray-100 text-gray-500 border-gray-200";
+                          return (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${color}`}>
+                              {rate}%
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {(po.status === "OPEN" || po.status === "RELEASED") && (() => {
+                          const isFull = getFillRate(po) >= 100;
+                          return (
+                            <button
+                              onClick={() => !isFull && openASNModal(po)}
+                              disabled={isFull}
+                              title={isFull ? "All items fully invoiced" : "Create ASN"}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg transition ${
+                                isFull
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "bg-amber-500 text-white hover:bg-amber-600"
+                              }`}
+                            >
+                              <Plus size={11} /> {isFull ? "Full" : "ASN"}
+                            </button>
+                          );
+                        })()}
                       </td>
                     </tr>
 
                     {/* Expanded line items */}
                     {expanded && (
                       <tr>
-                        <td colSpan={8} className="bg-amber-50/40 px-8 py-3 border-b border-amber-100">
+                        <td colSpan={10} className="bg-amber-50/40 px-8 py-3 border-b border-amber-100">
                           {itemLoading ? (
                             <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
                               <Loader2 size={12} className="animate-spin" /> Loading line items…
@@ -543,6 +663,129 @@ export default function BlinkitPOs() {
                   </div>
                 </div>
 
+                {/* Supplier details */}
+                <div className="border border-gray-100 rounded-lg p-3 space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier (Your) Details</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Supplier GSTIN *</label>
+                      <input
+                        required type="text" placeholder="e.g. 27AABCT1332L1ZS"
+                        value={asnForm.supplierGstin}
+                        onChange={e => setAsnForm({ ...asnForm, supplierGstin: e.target.value.toUpperCase() })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Address Line 1 *</label>
+                      <input
+                        required type="text" placeholder="Street / Building"
+                        value={asnForm.supplierAddress1}
+                        onChange={e => setAsnForm({ ...asnForm, supplierAddress1: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>
+                      <input
+                        required type="text" placeholder="Mumbai"
+                        value={asnForm.supplierCity}
+                        onChange={e => setAsnForm({ ...asnForm, supplierCity: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">State *</label>
+                      <input
+                        required type="text" placeholder="Maharashtra"
+                        value={asnForm.supplierState}
+                        onChange={e => setAsnForm({ ...asnForm, supplierState: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Postal Code *</label>
+                      <input
+                        required type="text" placeholder="400001"
+                        value={asnForm.supplierPostalCode}
+                        onChange={e => setAsnForm({ ...asnForm, supplierPostalCode: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Buyer + shipment */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Buyer GSTIN *</label>
+                    <input
+                      required type="text" placeholder="Auto-filled from PO"
+                      value={asnForm.buyerGstin}
+                      onChange={e => setAsnForm({ ...asnForm, buyerGstin: e.target.value.toUpperCase() })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Delivery Type *</label>
+                    <select
+                      value={asnForm.deliveryType}
+                      onChange={e => setAsnForm({ ...asnForm, deliveryType: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="SELF">SELF</option>
+                      <option value="COURIER">COURIER</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Existing ASNs */}
+                {asnExistingLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                    <Loader2 size={12} className="animate-spin" /> Loading existing ASNs…
+                  </div>
+                ) : asnExisting.length > 0 && (
+                  <div className="border border-green-100 rounded-lg overflow-hidden">
+                    <div className="bg-green-50 px-3 py-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+                        Existing ASNs ({asnExisting.length})
+                      </p>
+                      <p className="text-xs text-green-600">
+                        {Object.values(asnAllocations).reduce((s, v) => s + v, 0)} of{" "}
+                        {asnModal?.totalQty ?? 0} units invoiced
+                      </p>
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-3 py-1.5 text-left font-medium">ASN ID</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Invoice</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Total Qty</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {asnExisting.map(asn => (
+                          <tr key={asn.asn_id} className="hover:bg-gray-50">
+                            <td className="px-3 py-1.5 font-mono text-amber-700">{asn.asn_id}</td>
+                            <td className="px-3 py-1.5 text-gray-600">{asn.invoice_number ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right font-semibold">{asn.total_qty}</td>
+                            <td className="px-3 py-1.5 text-gray-400">
+                              {asn.created_at
+                                ? new Date(asn.created_at).toLocaleDateString("en-IN", {
+                                    day: "2-digit", month: "short",
+                                  })
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {/* Line Items */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -565,8 +808,9 @@ export default function BlinkitPOs() {
                           <tr>
                             <th className="px-3 py-2 text-left">Product</th>
                             <th className="px-3 py-2 text-right">Ordered</th>
-                            <th className="px-3 py-2 text-center w-24">Invoice Qty *</th>
-                            <th className="px-3 py-2 text-left w-28">Batch No.</th>
+                            <th className="px-3 py-2 text-center w-20">Inv. Qty *</th>
+                            <th className="px-3 py-2 text-left w-24">UPC *</th>
+                            <th className="px-3 py-2 text-left w-24">Batch No. *</th>
                             <th className="px-3 py-2 text-left w-28">Expiry Date</th>
                           </tr>
                         </thead>
@@ -592,7 +836,19 @@ export default function BlinkitPOs() {
                               </td>
                               <td className="px-3 py-2">
                                 <input
-                                  type="text" placeholder="Optional"
+                                  required type="text" placeholder="Barcode"
+                                  value={line.upc}
+                                  onChange={e => {
+                                    const l = [...asnForm.lines];
+                                    l[idx] = { ...l[idx], upc: e.target.value };
+                                    setAsnForm({ ...asnForm, lines: l });
+                                  }}
+                                  className="w-full border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  required type="text" placeholder="Batch #"
                                   value={line.batchNumber}
                                   onChange={e => {
                                     const l = [...asnForm.lines];

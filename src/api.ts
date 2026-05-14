@@ -87,12 +87,7 @@ export const requestZeptoPOAmendment = (po_number: string, payload: any) =>
 export const getBlinkitHealth = () => api.get("/blinkit/health");
 export const getBlinkitConnectionInfo = () => api.get("/blinkit/connection-info");
 
-export const getBlinkitPOs = (params?: {
-  status?: string;
-  days?: number;
-  page?: number;
-  page_size?: number;
-}) => api.get("/blinkit/pos", { params });
+export const getBlinkitPOs = () => api.get("/blinkit/pos");
 
 export const getBlinkitPO = (po_number: string) =>
   api.get(`/blinkit/pos/${encodeURIComponent(po_number)}`);
@@ -100,12 +95,32 @@ export const getBlinkitPO = (po_number: string) =>
 export const createBlinkitASN = (payload: any) =>
   api.post("/blinkit/asn", payload);
 
-export const getBlinkitASNs = (
-  po_number: string,
-  params?: { page?: number; page_size?: number },
-) => api.get("/blinkit/asn", { params: { po_number, ...params } });
+export const getBlinkitASNs = (po_number: string) =>
+  api.get("/blinkit/asn", { params: { po_number } });
+
+export const getBlinkitPOSKUAllocations = (po_number: string) =>
+  api.get(`/blinkit/po/${encodeURIComponent(po_number)}/sku-allocations`);
 
 export const cancelBlinkitASN = (asn_id: string, reason?: string) =>
   api.delete(`/blinkit/asn/${encodeURIComponent(asn_id)}`, {
     params: reason ? { reason } : undefined,
   });
+
+// ── Email PO Layer ────────────────────────────────────────────────────────────
+export const getEmailPOs = (params?: { parse_status?: string; limit?: number }) =>
+  api.get("/email/pos", { params });
+
+export const getEmailPO = (logId: number) =>
+  api.get(`/email/pos/${logId}`);
+
+export const testEmailPO = (data: { sender_email: string; subject: string; body_text: string; body_html?: string }) =>
+  api.post("/email/test", data);
+
+export const reprocessEmailPO = (logId: number) =>
+  api.post(`/email/pos/${logId}/reprocess`);
+
+export const getGmailStatus = () =>
+  api.get("/email/gmail-status");
+
+export const pollGmail = (params?: { days_back?: number; max_per_label?: number }) =>
+  api.post("/email/poll-gmail", null, { params });
