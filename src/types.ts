@@ -318,6 +318,22 @@ export interface BlinkitASNListData {
   totalCount?: number;
 }
 
+// ── Blinkit Locally-Tracked ASN (our DB, since Blinkit has no List-ASNs API) ──
+export interface BlinkitTrackedASNItem {
+  item_id: string;
+  sku_code: string;
+  invoiced_qty: number;
+}
+
+export interface BlinkitTrackedASN {
+  asn_id: string;
+  po_number: string;
+  invoice_number?: string;
+  created_at?: string;
+  total_qty: number;
+  items: BlinkitTrackedASNItem[];
+}
+
 // ── Email PO Layer ────────────────────────────────────────────────────────────
 
 export type EmailParseStatus = "PENDING" | "PARSED" | "FAILED";

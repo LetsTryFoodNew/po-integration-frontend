@@ -9,7 +9,7 @@ import {
   getBlinkitASNs, getBlinkitPOSKUAllocations,
 } from "../api";
 import type {
-  BlinkitPO, BlinkitPOItem, BlinkitPOListData,
+  BlinkitPO, BlinkitPOItem, BlinkitPOListData, BlinkitTrackedASN,
 } from "../types";
 import blinkitLogo from "../assets/blinkit-logo.svg";
 
@@ -47,15 +47,6 @@ interface CreateASNForm {
   buyerGstin: string;
   deliveryType: string;
   lines: ASNLineForm[];
-}
-
-interface BlinkitTrackedASN {
-  asn_id: string;
-  po_number: string;
-  invoice_number?: string;
-  created_at?: string;
-  total_qty: number;
-  items: { item_id: string; sku_code: string; invoiced_qty: number }[];
 }
 
 function recalcLineQtys(
