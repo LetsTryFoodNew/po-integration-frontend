@@ -254,6 +254,7 @@ export interface BlinkitPOItem {
   shelfLife?: number;
   ean?: string;
   packSize?: string;
+  landingPrice?: number;
 }
 
 export interface BlinkitPO {
