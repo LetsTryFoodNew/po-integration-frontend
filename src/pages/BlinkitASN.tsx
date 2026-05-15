@@ -46,12 +46,16 @@ export default function BlinkitASN() {
   };
 
   const handleCancel = async (asnId: string) => {
-    if (!confirm(`Cancel ASN ${asnId}?\n\nThis cannot be undone.`)) return;
+    if (!confirm(`Cancel ASN ${asnId}?\n\nThis removes it from local tracking so you can re-submit against the same PO.\nBlinkit has no cancel API — contact them if the shipment is already in transit.`)) return;
     setCancelling(asnId);
     try {
-      await cancelBlinkitASN(asnId, "VENDOR_REQUEST");
-      setCancelSuccess(`ASN ${asnId} cancelled successfully.`);
-      await fetchASNs(searchedCode);
+      const res = await cancelBlinkitASN(asnId, "VENDOR_REQUEST");
+      if (res.data?.success === false) {
+        alert(res.data?.message ?? "ASN not found in local tracking");
+      } else {
+        setCancelSuccess(res.data?.message ?? `ASN ${asnId} cancelled — allocated qty released.`);
+        await fetchASNs(searchedCode);
+      }
     } catch (e: any) {
       alert(e.response?.data?.detail ?? "Failed to cancel ASN");
     }

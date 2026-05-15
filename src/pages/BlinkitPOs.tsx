@@ -559,7 +559,11 @@ export default function BlinkitPOs() {
                         })()}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {(po.status === "OPEN" || po.status === "RELEASED") && (() => {
+                        {po.status === "CANCELLED" || po.status === "EXPIRED" ? (
+                          <span className="text-xs text-gray-400 italic">
+                            {po.status === "CANCELLED" ? "Cancelled" : "Expired"}
+                          </span>
+                        ) : (po.status === "OPEN" || po.status === "RELEASED") && (() => {
                           const isFull = getFillRate(po) >= 100;
                           return (
                             <button
