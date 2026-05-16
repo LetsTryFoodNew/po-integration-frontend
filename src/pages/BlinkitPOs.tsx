@@ -2,11 +2,11 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ClipboardList, RefreshCcw, Wifi, WifiOff, Clock,
   ChevronDown, ChevronRight, Plus, PackageCheck,
-  CheckCircle, XCircle, AlertCircle, Loader2, Webhook,
+  CheckCircle, XCircle, AlertCircle, Loader2, Webhook, FilePen,
 } from "lucide-react";
 import {
   getBlinkitPOs, getBlinkitPO, getBlinkitHealth, createBlinkitASN,
-  getBlinkitASNs, getBlinkitPOSKUAllocations,
+  getBlinkitASNs, getBlinkitPOSKUAllocations, requestBlinkitPOAmendment,
 } from "../api";
 import type {
   BlinkitPO, BlinkitPOItem, BlinkitPOListData, BlinkitTrackedASN,
@@ -21,6 +21,23 @@ const PO_STATUS_STYLE: Record<string, string> = {
   CANCELLED:"bg-red-100 text-red-700 border-red-300",
   EXPIRED:  "bg-gray-100 text-gray-600 border-gray-300",
 };
+
+interface AmendItemForm {
+  item_id: string;
+  productName: string;
+  upc: string;
+  mrp: number;
+  uom_type: string;
+  uom_value: string;
+  uom_unit: string;
+  include: boolean;
+}
+
+interface AmendResult {
+  success: boolean;
+  message?: string;
+  updated_items?: any[];
+}
 
 interface ASNLineForm {
   productId: string;
@@ -112,6 +129,13 @@ export default function BlinkitPOs() {
   const [asnAllocations, setAsnAllocations]       = useState<Record<string, number>>({});
   const [asnExistingLoading, setAsnExistingLoading] = useState(false);
   const [poAllocationsMap, setPoAllocationsMap]     = useState<Record<string, Record<string, number>>>({});
+
+  // Amendment modal
+  const [amendModal, setAmendModal]         = useState<BlinkitPO | null>(null);
+  const [amendLines, setAmendLines]         = useState<AmendItemForm[]>([]);
+  const [amendSubmitting, setAmendSubmitting] = useState(false);
+  const [amendResult, setAmendResult]       = useState<AmendResult | null>(null);
+  const [amendError, setAmendError]         = useState<string | null>(null);
 
   const fetchAllAllocations = async (poList: BlinkitPO[]) => {
     const results = await Promise.allSettled(
@@ -365,6 +389,70 @@ export default function BlinkitPOs() {
     setAsnSubmitting(false);
   };
 
+  const openAmendModal = async (po: BlinkitPO) => {
+    setAmendResult(null);
+    setAmendError(null);
+    // If items not yet loaded, fetch them first
+    let items = po.items ?? [];
+    if (!items.length) {
+      try {
+        const res = await getBlinkitPO(po.purchaseOrderId);
+        const detail = res.data?.data ?? res.data;
+        items = detail?.items ?? [];
+        setPOs(prev => prev.map(p =>
+          p.purchaseOrderId === po.purchaseOrderId ? { ...p, items } : p
+        ));
+      } catch { /* non-critical */ }
+    }
+    setAmendLines(items.map(item => ({
+      item_id:     item.productId,
+      productName: item.productName,
+      upc:         item.upc ?? "",
+      mrp:         item.mrp,
+      uom_type:    "STANDARD",
+      uom_value:   String(item.unitValue ?? ""),
+      uom_unit:    item.unitLabel ?? "",
+      include:     false,
+    })));
+    setAmendModal(po);
+  };
+
+  const handleAmendSubmit = async (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (!amendModal) return;
+    const selected = amendLines.filter(l => l.include);
+    if (!selected.length) {
+      setAmendError("Select at least one item to amend.");
+      return;
+    }
+    setAmendSubmitting(true);
+    setAmendError(null);
+    const request_data = selected.map(l => ({
+      item_id:  l.item_id,
+      variants: [{
+        upc:        l.upc,
+        mrp:        l.mrp,
+        uom: {
+          type:  l.uom_type,
+          value: l.uom_value,
+          unit:  l.uom_unit,
+        },
+        po_numbers: [amendModal.purchaseOrderId],
+      }],
+    }));
+    try {
+      const res = await requestBlinkitPOAmendment(amendModal.purchaseOrderId, { request_data });
+      setAmendResult({ success: true, message: res.data?.data?.message ?? "Amendment submitted", updated_items: res.data?.data?.updated_items });
+    } catch (err: any) {
+      setAmendError(
+        err.response?.data?.detail ??
+        JSON.stringify(err.response?.data) ??
+        "Failed to submit amendment",
+      );
+    }
+    setAmendSubmitting(false);
+  };
+
   const stats = {
     total:    pos.length,
     open:     pos.filter(p => p.status === "OPEN").length,
@@ -566,18 +654,27 @@ export default function BlinkitPOs() {
                         ) : (po.status === "OPEN" || po.status === "RELEASED") && (() => {
                           const isFull = getFillRate(po) >= 100;
                           return (
-                            <button
-                              onClick={() => !isFull && openASNModal(po)}
-                              disabled={isFull}
-                              title={isFull ? "All items fully invoiced" : "Create ASN"}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg transition ${
-                                isFull
-                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                  : "bg-amber-500 text-white hover:bg-amber-600"
-                              }`}
-                            >
-                              <Plus size={11} /> {isFull ? "Full" : "ASN"}
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => !isFull && openASNModal(po)}
+                                disabled={isFull}
+                                title={isFull ? "All items fully invoiced" : "Create ASN"}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg transition ${
+                                  isFull
+                                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                    : "bg-amber-500 text-white hover:bg-amber-600"
+                                }`}
+                              >
+                                <Plus size={11} /> {isFull ? "Full" : "ASN"}
+                              </button>
+                              <button
+                                onClick={() => openAmendModal(po)}
+                                title="Request PO Amendment (correct MRP / UOM / UPC)"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition"
+                              >
+                                <FilePen size={11} /> Amend
+                              </button>
+                            </div>
                           );
                         })()}
                       </td>
@@ -1018,6 +1115,226 @@ export default function BlinkitPOs() {
                     {asnSubmitting
                       ? <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Submitting…</span>
                       : "Submit ASN to Blinkit"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PO Amendment Modal */}
+      {amendModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto"
+          onClick={() => !amendSubmitting && setAmendModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-2xl shadow-2xl my-8"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="font-bold text-gray-800">
+                  Request PO Amendment —{" "}
+                  <span className="font-mono text-blue-700">{amendModal.purchaseOrderId}</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Correct MRP, UPC, or Unit of Measure for items on this PO
+                </p>
+              </div>
+              {!amendSubmitting && (
+                <button onClick={() => setAmendModal(null)} className="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+              )}
+            </div>
+
+            {amendResult?.success ? (
+              <div className="p-8 text-center">
+                <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
+                <h4 className="font-bold text-gray-800 text-lg mb-1">Amendment Submitted</h4>
+                <p className="text-gray-500 text-sm mb-4">{amendResult.message ?? "Blinkit has received the correction request."}</p>
+                {amendResult.updated_items && amendResult.updated_items.length > 0 && (
+                  <div className="border border-gray-100 rounded-lg overflow-hidden mb-5 text-left">
+                    <div className="bg-green-50 px-4 py-2">
+                      <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Updated Items</p>
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Item ID</th>
+                          <th className="px-3 py-2 text-right">Cost Price</th>
+                          <th className="px-3 py-2 text-right">Landing Price</th>
+                          <th className="px-3 py-2 text-right">Tax</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {amendResult.updated_items.map((item: any, i: number) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-3 py-1.5 font-mono text-blue-700">{item.item_id ?? item.itemId ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right">₹{item.cost_price ?? item.costPrice ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right">₹{item.landing_price ?? item.landingPrice ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right">{item.tax ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <button
+                  onClick={() => setAmendModal(null)}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleAmendSubmit} className="p-5 space-y-4">
+                {/* Info banner */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 space-y-1">
+                  <p><strong>Endpoint:</strong> <code className="bg-white border border-blue-200 px-1 rounded">POST /webhook/public/v1/po/amendment</code></p>
+                  <p>Select items to correct their MRP, UPC, or Unit of Measure. Blinkit will recalculate cost price, landing price, and tax.</p>
+                  <p className="text-amber-700"><strong>⚠ Test environment:</strong> Blinkit may return 404 if the amendment endpoint isn't activated for Vendor 18309 on dev.partnersbiz.com — contact Blinkit to enable it.</p>
+                </div>
+
+                {amendError && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                    <span className="break-all">{amendError}</span>
+                  </div>
+                )}
+
+                {amendLines.length === 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                    No items found. Expand the PO row to load items first, then reopen this modal.
+                  </div>
+                ) : (
+                  <div className="border border-gray-100 rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-3 py-2 text-center w-8">✓</th>
+                          <th className="px-3 py-2 text-left">Item</th>
+                          <th className="px-3 py-2 text-center w-20">MRP (₹)</th>
+                          <th className="px-3 py-2 text-left w-24">UPC</th>
+                          <th className="px-3 py-2 text-center w-16">UOM Type</th>
+                          <th className="px-3 py-2 text-center w-16">Value</th>
+                          <th className="px-3 py-2 text-center w-14">Unit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {amendLines.map((line, idx) => (
+                          <tr key={idx} className={`hover:bg-gray-50 ${line.include ? "bg-blue-50/40" : ""}`}>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], include: e.target.checked };
+                                  setAmendLines(l);
+                                }}
+                                className="w-4 h-4 accent-blue-600"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="font-mono text-blue-700">{line.item_id}</div>
+                              <div className="text-gray-500 truncate max-w-[150px]">{line.productName}</div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number" min="0" step="0.01"
+                                value={line.mrp}
+                                disabled={!line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], mrp: Number(e.target.value) };
+                                  setAmendLines(l);
+                                }}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-center text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text" placeholder="Barcode"
+                                value={line.upc}
+                                disabled={!line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], upc: e.target.value };
+                                  setAmendLines(l);
+                                }}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={line.uom_type}
+                                disabled={!line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], uom_type: e.target.value };
+                                  setAmendLines(l);
+                                }}
+                                className="w-full border border-gray-200 rounded px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                              >
+                                <option value="STANDARD">STD</option>
+                                <option value="CUSTOM">CUSTOM</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text" placeholder="250"
+                                value={line.uom_value}
+                                disabled={!line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], uom_value: e.target.value };
+                                  setAmendLines(l);
+                                }}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-center text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text" placeholder="g"
+                                value={line.uom_unit}
+                                disabled={!line.include}
+                                onChange={e => {
+                                  const l = [...amendLines];
+                                  l[idx] = { ...l[idx], uom_unit: e.target.value };
+                                  setAmendLines(l);
+                                }}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-center text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400">
+                  {amendLines.filter(l => l.include).length} of {amendLines.length} items selected for amendment
+                </p>
+
+                <div className="flex gap-3 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setAmendModal(null)}
+                    disabled={amendSubmitting}
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={amendSubmitting || !amendLines.some(l => l.include)}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition"
+                  >
+                    {amendSubmitting
+                      ? <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Submitting…</span>
+                      : "Submit Amendment to Blinkit"}
                   </button>
                 </div>
               </form>
