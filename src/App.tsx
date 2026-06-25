@@ -16,6 +16,8 @@ import ZeptoPOs from "./pages/ZeptoPOs";
 import ZeptoASN from "./pages/ZeptoASN";
 import BlinkitPOs from "./pages/BlinkitPOs";
 import BlinkitASN from "./pages/BlinkitASN";
+import EmailPOs from "./pages/EmailPOs";
+import ApiDoc from "./pages/ApiDoc";
 
 function App() {
   return (
@@ -40,6 +42,8 @@ function App() {
             <Route path="/zepto/asn" element={<ZeptoASN />} />
             <Route path="/blinkit/pos" element={<BlinkitPOs />} />
             <Route path="/blinkit/asn" element={<BlinkitASN />} />
+            <Route path="/email/pos" element={<EmailPOs />} />
+            <Route path="/api-doc" element={<ApiDoc />} />
           </Routes>
         </main>
       </div>

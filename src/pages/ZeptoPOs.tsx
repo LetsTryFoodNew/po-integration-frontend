@@ -159,9 +159,11 @@ function recalcLineQtys(
 export default function ZeptoPOs() {
   const [pos, setPOs]               = useState<ZeptoPO[]>([]);
   const [loading, setLoading]       = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [connected, setConnected]   = useState<boolean | null>(null);
   const [days, setDays]             = useState(7);
   const [includeAll, setIncludeAll] = useState(false);
+  const [poSearch, setPoSearch]     = useState("");         // PO code search
   const [page, setPage]             = useState(1);
   const [hasNext, setHasNext]       = useState(false);
   const [expandedRows, setExpanded] = useState<Set<string>>(new Set());
@@ -199,28 +201,41 @@ export default function ZeptoPOs() {
     }
   };
 
-  const fetchPOs = async (p = page) => {
+  const fetchPOs = async (p = page, search = poSearch) => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await getZeptoPOEvents({
         days,
-        include_all_po_events:    includeAll,
+        include_all_po_events:     includeAll,
         include_line_item_details: true,
         page_size:   10,
         page_number: p,
+        ...(search.trim() ? { po_codes: search.trim() } : {}),
       });
-      const data = res.data?.data?.data as ZeptoPOListData | undefined;
-      setPOs(data?.purchaseOrders ?? []);
-      setHasNext(data?.hasNext ?? false);
+      // Surface Zepto-level errors (success:false comes back as 4xx, caught below,
+      // but handle any unexpected shape here too)
+      if (res.data?.success === false) {
+        setFetchError(res.data?.error ?? "Zepto returned an error");
+        setPOs([]);
+        setHasNext(false);
+      } else {
+        const data = res.data?.data?.data as ZeptoPOListData | undefined;
+        setPOs(data?.purchaseOrders ?? []);
+        setHasNext(data?.hasNext ?? false);
+      }
     } catch (e: any) {
-      console.error("Zepto PO fetch error:", e);
+      const msg = e.response?.data?.detail ?? e.response?.data?.error ?? e.message ?? "Failed to fetch POs from Zepto";
+      setFetchError(msg);
+      setPOs([]);
+      setHasNext(false);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     checkHealth();
-    fetchPOs(1);
+    fetchPOs(1, poSearch);
     setPage(1);
   }, [days, includeAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -472,6 +487,28 @@ export default function ZeptoPOs() {
           />
           Include all event history
         </label>
+        {/* PO code search */}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={poSearch}
+            onChange={e => setPoSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { setPage(1); fetchPOs(1, poSearch); } }}
+            placeholder="Search PO code…"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+          {poSearch && (
+            <button
+              onClick={() => { setPoSearch(""); setPage(1); fetchPOs(1, ""); }}
+              className="text-gray-400 hover:text-gray-600 text-xs px-1.5"
+              title="Clear search"
+            >✕</button>
+          )}
+          <button
+            onClick={() => { setPage(1); fetchPOs(1, poSearch); }}
+            className="px-3 py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 transition"
+          >Search</button>
+        </div>
         <div className="ml-auto flex items-center gap-2 text-sm text-gray-500">
           Page {page}
           <button
@@ -507,6 +544,18 @@ export default function ZeptoPOs() {
         ))}
       </div>
 
+      {/* Error banner */}
+      {fetchError && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-semibold">Zepto API Error: </span>
+            {fetchError}
+          </div>
+          <button onClick={() => setFetchError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs">✕</button>
+        </div>
+      )}
+
       {/* PO Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
@@ -518,7 +567,10 @@ export default function ZeptoPOs() {
           <div className="text-center py-16 text-gray-400">
             <ClipboardList size={40} className="mx-auto mb-3 text-gray-300" />
             <p className="font-medium">No PO events found</p>
-            <p className="text-sm mt-1">Try increasing the days range or check Zepto connection</p>
+            {poSearch.trim()
+              ? <p className="text-sm mt-1">No PO matched <span className="font-mono text-gray-600">{poSearch.trim()}</span> — check the PO code and try again</p>
+              : <p className="text-sm mt-1">Try increasing the days range or check Zepto connection</p>
+            }
           </div>
         ) : (
           <table className="w-full text-sm">

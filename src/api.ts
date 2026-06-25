@@ -106,6 +106,9 @@ export const cancelBlinkitASN = (asn_id: string, reason?: string) =>
     params: reason ? { reason } : undefined,
   });
 
+export const requestBlinkitPOAmendment = (po_number: string, payload: any) =>
+  api.post(`/blinkit/po/${encodeURIComponent(po_number)}/amendment`, payload);
+
 // ── Email PO Layer ────────────────────────────────────────────────────────────
 export const getEmailPOs = (params?: { parse_status?: string; limit?: number }) =>
   api.get("/email/pos", { params });
