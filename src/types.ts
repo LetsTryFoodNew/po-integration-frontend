@@ -334,39 +334,3 @@ export interface BlinkitTrackedASN {
   total_qty: number;
   items: BlinkitTrackedASNItem[];
 }
-
-// ── Email PO Layer ────────────────────────────────────────────────────────────
-
-export type EmailParseStatus = "PENDING" | "PARSED" | "FAILED";
-
-export interface EmailPOItem {
-  product_name: string;
-  sku: string | null;
-  quantity: number;
-  unit_price: number;
-}
-
-export interface EmailPOParsedData {
-  po_number?: string;
-  partner_code?: string;
-  partner_name?: string;
-  order_date?: string;
-  delivery_date?: string;
-  items?: EmailPOItem[];
-  notes?: string;
-  confidence?: "HIGH" | "MEDIUM" | "LOW";
-  error?: string;
-}
-
-export interface EmailPOLog {
-  id: number;
-  sender_email: string | null;
-  subject: string | null;
-  parse_status: EmailParseStatus;
-  po_number: string | null;
-  partner_code: string | null;
-  parsed_data: EmailPOParsedData | null;
-  po_id: number | null;
-  error_message: string | null;
-  created_at: string;
-}

@@ -108,22 +108,3 @@ export const cancelBlinkitASN = (asn_id: string, reason?: string) =>
 
 export const requestBlinkitPOAmendment = (po_number: string, payload: any) =>
   api.post(`/blinkit/po/${encodeURIComponent(po_number)}/amendment`, payload);
-
-// ── Email PO Layer ────────────────────────────────────────────────────────────
-export const getEmailPOs = (params?: { parse_status?: string; limit?: number }) =>
-  api.get("/email/pos", { params });
-
-export const getEmailPO = (logId: number) =>
-  api.get(`/email/pos/${logId}`);
-
-export const testEmailPO = (data: { sender_email: string; subject: string; body_text: string; body_html?: string }) =>
-  api.post("/email/test", data);
-
-export const reprocessEmailPO = (logId: number) =>
-  api.post(`/email/pos/${logId}/reprocess`);
-
-export const getGmailStatus = () =>
-  api.get("/email/gmail-status");
-
-export const pollGmail = (params?: { days_back?: number; max_per_label?: number }) =>
-  api.post("/email/poll-gmail", null, { params });
